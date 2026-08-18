@@ -55,7 +55,20 @@ impl Default for PlayerConfig {
 }
 
 impl PlayerConfig {
-    /// A config with `identity` and `bus_name` both set to `name`.
+    /// A config with `identity` and `bus_name` both set to `name`, and every
+    /// other field defaulted.
+    ///
+    /// `name` must be a valid D-Bus name element, since it becomes the bus name:
+    /// ASCII alphanumerics and underscores, not starting with a digit. Use the
+    /// builder methods to set the fields that matter for your platform --
+    /// [`desktop_entry`](Self::desktop_entry) on Linux, [`hwnd`](Self::hwnd) on
+    /// Windows.
+    ///
+    /// ```
+    /// # use playwire::PlayerConfig;
+    /// let config = PlayerConfig::new("Fauxplayer")
+    ///     .desktop_entry("com.example.fauxplayer");
+    /// ```
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
         Self {
@@ -65,27 +78,44 @@ impl PlayerConfig {
         }
     }
 
+    /// Sets the `.desktop` file basename, without the extension.
+    ///
+    /// Linux only, and worth setting: it is how GNOME and KDE find your icon.
+    /// See [`PlayerConfig::desktop_entry`](Self#structfield.desktop_entry).
     pub fn desktop_entry(mut self, entry: impl Into<String>) -> Self {
         self.desktop_entry = entry.into();
         self
     }
 
+    /// Sets the object-path prefix for `mpris:trackid`.
+    ///
+    /// Namespace this to your application so two players cannot collide in a
+    /// client's metadata cache. Linux only.
     pub fn track_id_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.track_id_prefix = prefix.into();
         self
     }
 
+    /// Sets the URI schemes the player can open, published as MPRIS
+    /// `SupportedUriSchemes`. Defaults to `http` and `https`.
     pub fn supported_uri_schemes(mut self, schemes: Vec<String>) -> Self {
         self.supported_uri_schemes = schemes;
         self
     }
 
+    /// Sets the MIME types the player can handle, published as MPRIS
+    /// `SupportedMimeTypes`. Defaults to empty.
     pub fn supported_mime_types(mut self, types: Vec<String>) -> Self {
         self.supported_mime_types = types;
         self
     }
 
-    /// Required on Windows. Pass the `HWND` as an integer.
+    /// Sets the window SMTC attaches to.
+    ///
+    /// **Required on Windows**, ignored elsewhere. Pass the `HWND` as an
+    /// integer, from your windowing library's raw window handle. Constructing
+    /// [`MediaControls`](crate::MediaControls) on Windows without it fails with
+    /// [`Error::Config`](crate::Error::Config).
     pub fn hwnd(mut self, hwnd: u64) -> Self {
         self.hwnd = Some(hwnd);
         self

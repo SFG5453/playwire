@@ -39,4 +39,5 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// A [`Result`](std::result::Result) with this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

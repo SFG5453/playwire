@@ -6,9 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.0]
+## [1.0.0]
 
-Initial release.
+Initial release. The API is considered stable; [`Event`] is `#[non_exhaustive]`
+so new controls can be added without a breaking change.
 
 - MPRIS v2 backend on zbus 5, with no libdbus linkage.
 - System Media Transport Controls backend on windows-rs 0.62.
@@ -20,3 +21,6 @@ Initial release.
   artist lists on MPRIS.
 - `MPNowPlayingInfoPropertyPlaybackRate` on macOS, so Control Center's scrubber
   advances.
+- Full rustdoc coverage, with per-item notes on which platforms honour what.
+
+[`Event`]: https://docs.rs/playwire/latest/playwire/enum.Event.html
