@@ -1,0 +1,56 @@
+[package]
+name = "playwire"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["SFG545"]
+description = "Cross-platform OS media controls and now-playing metadata: MPRIS, SMTC and Now Playing behind one API."
+repository = "https://github.com/SFG5453/playwire"
+documentation = "https://docs.rs/playwire"
+license = "MIT OR Apache-2.0"
+keywords = ["mpris", "smtc", "media", "now-playing", "media-keys"]
+categories = ["multimedia", "os", "api-bindings"]
+readme = "README.md"
+exclude = ["/.github"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+]
+
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+zbus = "5.19.0"
+zvariant = "5.14.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = [
+  "Foundation",
+  "Media",
+  "Storage_Streams",
+  "Win32_Foundation",
+  "Win32_System_WinRT",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", features = [
+  "NSDictionary",
+  "NSString",
+  "NSValue",
+  "NSURL",
+  "NSGeometry",
+] }
+objc2-media-player = { version = "0.3.2", features = [
+  "MPNowPlayingInfoCenter",
+  "MPRemoteCommand",
+  "MPRemoteCommandCenter",
+  "MPRemoteCommandEvent",
+  "MPMediaItem",
+  "MPRemoteControlTypes",
+  "MPMediaPlayback",
+] }
+objc2-app-kit = { version = "0.3.2", features = ["NSImage"] }
+block2 = "0.6.2"
