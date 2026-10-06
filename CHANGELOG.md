@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0]
+
+- Publish the Windows AppUserModelID through SMTC so the media flyout can
+  resolve the app's name and icon. `PlayerConfig::app_media_id` can supply it,
+  or the backend uses an explicit process AppUserModelID when available.
+- `PlayerConfig` gains a public field, so callers using a struct literal must
+  add `app_media_id` (or use `..PlayerConfig::default()`).
+
 ## [1.0.0]
 
 Initial release. The API is considered stable; [`Event`] is `#[non_exhaustive]`

@@ -1,6 +1,6 @@
 [package]
 name = "playwire"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.75"
 authors = ["SFG545"]
@@ -31,7 +31,9 @@ windows = { version = "0.62.2", features = [
   "Media",
   "Storage_Streams",
   "Win32_Foundation",
+  "Win32_System_Com",
   "Win32_System_WinRT",
+  "Win32_UI_Shell",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

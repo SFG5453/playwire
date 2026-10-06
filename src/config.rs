@@ -38,6 +38,13 @@ pub struct PlayerConfig {
     ///
     /// **Required on Windows**, ignored elsewhere.
     pub hwnd: Option<u64>,
+    /// Windows AppUserModelID used by the media controls to resolve the app's
+    /// name and icon. It must match the ID registered by your app's Start Menu
+    /// shortcut or package. If omitted, the Windows backend uses the process's
+    /// explicit AppUserModelID when one has been set.
+    ///
+    /// Windows only. This is an identifier, not the human-readable `identity`.
+    pub app_media_id: Option<String>,
 }
 
 impl Default for PlayerConfig {
@@ -50,6 +57,7 @@ impl Default for PlayerConfig {
             supported_uri_schemes: vec!["http".to_string(), "https".to_string()],
             supported_mime_types: Vec::new(),
             hwnd: None,
+            app_media_id: None,
         }
     }
 }
@@ -118,6 +126,16 @@ impl PlayerConfig {
     /// [`Error::Config`](crate::Error::Config).
     pub fn hwnd(mut self, hwnd: u64) -> Self {
         self.hwnd = Some(hwnd);
+        self
+    }
+
+    /// Sets the Windows AppUserModelID to publish with SMTC metadata.
+    ///
+    /// Use the same ID as your process and installed Start Menu shortcut (or
+    /// package). Without a registered ID, Windows may show "Unknown app" even
+    /// when the track title and artwork appear correctly.
+    pub fn app_media_id(mut self, id: impl Into<String>) -> Self {
+        self.app_media_id = Some(id.into());
         self
     }
 }

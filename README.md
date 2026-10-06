@@ -50,6 +50,19 @@ Controls detach on drop.
 
 `PlayerConfig::hwnd` is **required on Windows** — SMTC attaches to a window. Get
 it from your windowing library's raw window handle (`HWND` as an integer).
+To show your app's name and icon in the Windows media flyout, register an
+AppUserModelID on your installed Start Menu shortcut (or app package) and use
+the same ID for the process and `PlayerConfig::app_media_id`. The Windows
+backend publishes that ID to SMTC. If `app_media_id` is omitted, it uses an
+AppUserModelID already set explicitly on the process. `identity` is a display
+name and does not register a Windows app; without a resolvable ID, the flyout
+may say "Unknown app". For example:
+
+```rust,ignore
+let config = PlayerConfig::new("Fauxplayer")
+    .hwnd(hwnd)
+    .app_media_id("com.example.fauxplayer");
+```
 
 On Linux, `desktop_entry` is what lets GNOME and KDE resolve your player to its
 `.desktop` file and show your icon in the media widget. Without it you get a

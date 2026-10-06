@@ -26,7 +26,9 @@ use windows::Media::{
 };
 use windows::Storage::Streams::RandomAccessStreamReference;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::WinRT::ISystemMediaTransportControlsInterop;
+use windows::Win32::UI::Shell::GetCurrentProcessExplicitAppUserModelID;
 
 use crate::config::PlayerConfig;
 use crate::error::{Error, Result};
@@ -54,6 +56,19 @@ fn repeat_from_winrt(mode: MediaPlaybackAutoRepeatMode) -> Repeat {
         MediaPlaybackAutoRepeatMode::List => Repeat::All,
         _ => Repeat::Off,
     }
+}
+
+fn process_app_media_id() -> Option<String> {
+    // The Shell only returns an explicitly assigned process ID. Its returned
+    // string is CoTaskMemAlloc-owned even when conversion fails.
+    let id = unsafe { GetCurrentProcessExplicitAppUserModelID().ok()? };
+    let value = if id.is_null() {
+        None
+    } else {
+        unsafe { id.to_string().ok() }
+    };
+    unsafe { CoTaskMemFree(Some(id.as_ptr().cast())) };
+    value.filter(|value| !value.is_empty())
 }
 
 pub struct SmtcBackend {
@@ -97,6 +112,18 @@ impl SmtcBackend {
         display_updater
             .SetType(MediaPlaybackType::Music)
             .map_err(|error| Error::Unavailable(format!("playback type: {error}")))?;
+
+        let app_media_id = config
+            .app_media_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .or_else(process_app_media_id);
+        if let Some(id) = app_media_id {
+            display_updater
+                .SetAppMediaId(&HSTRING::from(id))
+                .map_err(|error| Error::Unavailable(format!("app media id: {error}")))?;
+        }
 
         let mut backend = Self {
             controls,
