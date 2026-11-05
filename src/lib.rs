@@ -5,7 +5,11 @@
 // or distributed except according to those terms.
 
 #![doc = include_str!("../README.md")]
-#![warn(missing_docs, missing_debug_implementations, rustdoc::broken_intra_doc_links)]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    rustdoc::broken_intra_doc_links
+)]
 
 mod config;
 mod error;
@@ -14,7 +18,7 @@ mod state;
 
 pub use config::PlayerConfig;
 pub use error::{Error, Result};
-pub use state::{Capabilities, Event, PlaybackState, Repeat, Track};
+pub use state::{Capabilities, Event, PlaybackState, Repeat, Track, TrackListEntry};
 
 use std::fmt;
 use std::sync::Arc;
@@ -105,6 +109,22 @@ impl MediaControls {
     pub fn set_state(&mut self, state: &PlaybackState) -> Result<()> {
         match self.backend.as_mut() {
             Some(backend) => backend.set_state(state),
+            None => Ok(()),
+        }
+    }
+
+    /// Publishes an ordered track list, or disables it with `None`.
+    ///
+    /// `Some(&[])` exposes an empty list. On Linux, clients can inspect the
+    /// list and request playback of an entry via [`Event::GoTo`]. Editing the
+    /// list through MPRIS is not supported. Other platforms ignore this call.
+    /// Entry IDs must be nonempty and unique after MPRIS path sanitization;
+    /// invalid lists return [`Error::Publish`] without changing the list.
+    /// Publish the current track separately with [`Self::set_state`], using
+    /// the same ID as its corresponding entry.
+    pub fn set_tracklist(&mut self, tracks: Option<&[TrackListEntry]>) -> Result<()> {
+        match self.backend.as_mut() {
+            Some(backend) => backend.set_tracklist(tracks),
             None => Ok(()),
         }
     }

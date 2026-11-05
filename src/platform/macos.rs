@@ -14,9 +14,8 @@
 //! scrubber sits frozen even while elapsed time updates.
 
 use std::ptr::NonNull;
-use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
+use std::time::Duration;
 
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -34,8 +33,8 @@ use objc2_media_player::{
 
 use crate::config::PlayerConfig;
 use crate::error::Result;
-use crate::state::{Event, PlaybackState, Repeat, Track};
 use crate::platform::{Backend, Emitter};
+use crate::state::{Event, PlaybackState, Repeat, Track};
 
 /// Artwork loads off the main thread, so a slow fetch for a track the user has
 /// already skipped past must not overwrite the current track's art. Each
@@ -255,12 +254,11 @@ fn load_artwork_async(url: String, generation: usize) {
             // stays valid; deriving one from a temporary clone would dangle as
             // soon as the request handler returned.
             let handler = RcBlock::new(move |_size: NSSize| NonNull::from(&*image));
-            let artwork =
-                MPMediaItemArtwork::initWithBoundsSize_requestHandler(
-                    MPMediaItemArtwork::alloc(),
-                    size,
-                    &handler,
-                );
+            let artwork = MPMediaItemArtwork::initWithBoundsSize_requestHandler(
+                MPMediaItemArtwork::alloc(),
+                size,
+                &handler,
+            );
 
             let center = MPNowPlayingInfoCenter::defaultCenter();
             let Some(existing) = center.nowPlayingInfo() else {

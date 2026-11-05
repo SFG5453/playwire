@@ -21,8 +21,7 @@ use windows::Media::{
     MediaPlaybackType, PlaybackPositionChangeRequestedEventArgs,
     ShuffleEnabledChangeRequestedEventArgs, SystemMediaTransportControls,
     SystemMediaTransportControlsButton, SystemMediaTransportControlsButtonPressedEventArgs,
-    SystemMediaTransportControlsDisplayUpdater,
-    SystemMediaTransportControlsTimelineProperties,
+    SystemMediaTransportControlsDisplayUpdater, SystemMediaTransportControlsTimelineProperties,
 };
 use windows::Storage::Streams::RandomAccessStreamReference;
 use windows::Win32::Foundation::HWND;
@@ -32,8 +31,8 @@ use windows::Win32::UI::Shell::GetCurrentProcessExplicitAppUserModelID;
 
 use crate::config::PlayerConfig;
 use crate::error::{Error, Result};
-use crate::state::{Event, PlaybackState, Repeat, Track};
 use crate::platform::{Backend, Emitter};
+use crate::state::{Event, PlaybackState, Repeat, Track};
 
 fn duration_from_secs(seconds: f64) -> TimeSpan {
     if !seconds.is_finite() || seconds <= 0.0 {
@@ -193,7 +192,11 @@ impl SmtcBackend {
         let token = self
             .controls
             .PlaybackPositionChangeRequested(&position_handler)
-            .map_err(|error| Error::Unavailable(format!("registering PlaybackPositionChangeRequested: {error}")))?;
+            .map_err(|error| {
+                Error::Unavailable(format!(
+                    "registering PlaybackPositionChangeRequested: {error}"
+                ))
+            })?;
         self.tokens.push(("position", token));
 
         let shuffle_emit = emit.clone();
@@ -211,7 +214,11 @@ impl SmtcBackend {
         let token = self
             .controls
             .ShuffleEnabledChangeRequested(&shuffle_handler)
-            .map_err(|error| Error::Unavailable(format!("registering ShuffleEnabledChangeRequested: {error}")))?;
+            .map_err(|error| {
+                Error::Unavailable(format!(
+                    "registering ShuffleEnabledChangeRequested: {error}"
+                ))
+            })?;
         self.tokens.push(("shuffle", token));
 
         let repeat_emit = emit;
@@ -231,7 +238,11 @@ impl SmtcBackend {
         let token = self
             .controls
             .AutoRepeatModeChangeRequested(&repeat_handler)
-            .map_err(|error| Error::Unavailable(format!("registering AutoRepeatModeChangeRequested: {error}")))?;
+            .map_err(|error| {
+                Error::Unavailable(format!(
+                    "registering AutoRepeatModeChangeRequested: {error}"
+                ))
+            })?;
         self.tokens.push(("repeat", token));
 
         Ok(())
@@ -286,10 +297,14 @@ impl Backend for SmtcBackend {
             self.controls.SetIsPlayEnabled(state.has_track())?;
             self.controls.SetIsPauseEnabled(state.has_track())?;
             self.controls.SetIsStopEnabled(state.has_track())?;
-            self.controls.SetIsNextEnabled(state.capabilities.can_go_next)?;
-            self.controls.SetIsPreviousEnabled(state.capabilities.can_go_previous)?;
-            self.controls.SetIsFastForwardEnabled(state.capabilities.can_seek)?;
-            self.controls.SetIsRewindEnabled(state.capabilities.can_seek)?;
+            self.controls
+                .SetIsNextEnabled(state.capabilities.can_go_next)?;
+            self.controls
+                .SetIsPreviousEnabled(state.capabilities.can_go_previous)?;
+            self.controls
+                .SetIsFastForwardEnabled(state.capabilities.can_seek)?;
+            self.controls
+                .SetIsRewindEnabled(state.capabilities.can_seek)?;
 
             self.controls.SetShuffleEnabled(state.shuffle)?;
             self.controls

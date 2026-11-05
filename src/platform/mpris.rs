@@ -12,18 +12,18 @@
 //! entirely, and misspells `HasTrackList`.
 
 use std::collections::HashMap;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use zbus::blocking::Connection;
-use zbus::object_server::SignalEmitter;
 use zbus::interface;
+use zbus::object_server::SignalEmitter;
 use zvariant::{ObjectPath, OwnedValue, Value};
 
 use crate::config::PlayerConfig;
 use crate::error::{Error, Result};
 use crate::platform::{Backend, Emitter};
-use crate::state::{Event, PlaybackState, Repeat};
+use crate::state::{Event, PlaybackState, Repeat, TrackListEntry};
 
 const OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
 const NO_TRACK_PATH: &str = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
@@ -75,7 +75,10 @@ fn metadata_map(state: &PlaybackState, prefix: &str) -> HashMap<String, OwnedVal
         }
     };
 
-    insert("mpris:trackid", Value::from(track_object_path(state, prefix)));
+    insert(
+        "mpris:trackid",
+        Value::from(track_object_path(state, prefix)),
+    );
 
     let Some(track) = &state.track else {
         return metadata;
@@ -105,6 +108,7 @@ struct Shared {
     state: PlaybackState,
     emit: Emitter,
     track_id_prefix: String,
+    tracklist: Option<Vec<TrackListEntry>>,
 }
 
 impl Shared {
@@ -158,7 +162,7 @@ impl RootInterface {
     /// `HasTracklist`, which spec-conforming clients simply do not read.
     #[zbus(property)]
     fn has_track_list(&self) -> bool {
-        false
+        self.shared.lock().unwrap().tracklist.is_some()
     }
 
     #[zbus(property)]
@@ -347,7 +351,12 @@ impl PlayerInterface {
 
     #[zbus(property)]
     fn can_go_previous(&self) -> bool {
-        self.shared.lock().unwrap().state.capabilities.can_go_previous
+        self.shared
+            .lock()
+            .unwrap()
+            .state
+            .capabilities
+            .can_go_previous
     }
 
     #[zbus(property)]
@@ -371,10 +380,118 @@ impl PlayerInterface {
     }
 }
 
+fn entry_state(entry: &TrackListEntry) -> PlaybackState {
+    PlaybackState {
+        track: Some(entry.track.clone()),
+        duration: entry.duration,
+        ..Default::default()
+    }
+}
+
+fn entry_path(entry: &TrackListEntry, prefix: &str) -> ObjectPath<'static> {
+    track_object_path(&entry_state(entry), prefix)
+}
+
+struct TrackListInterface {
+    shared: Arc<Mutex<Shared>>,
+}
+
+#[interface(name = "org.mpris.MediaPlayer2.TrackList")]
+impl TrackListInterface {
+    fn get_tracks_metadata(&self, ids: Vec<ObjectPath<'_>>) -> Vec<HashMap<String, OwnedValue>> {
+        let shared = self.shared.lock().unwrap();
+        ids.iter()
+            .filter_map(|id| {
+                shared
+                    .tracklist
+                    .as_ref()?
+                    .iter()
+                    .find(|entry| entry_path(entry, &shared.track_id_prefix) == *id)
+                    .map(|entry| metadata_map(&entry_state(entry), &shared.track_id_prefix))
+            })
+            .collect()
+    }
+
+    fn add_track(&self, _uri: String, _after_track: ObjectPath<'_>, _set_as_current: bool) {}
+    fn remove_track(&self, _track_id: ObjectPath<'_>) {}
+
+    fn go_to(&self, track_id: ObjectPath<'_>) {
+        let shared = self.shared.lock().unwrap();
+        if let Some(entry) = shared.tracklist.as_ref().and_then(|tracks| {
+            tracks
+                .iter()
+                .find(|entry| entry_path(entry, &shared.track_id_prefix) == track_id)
+        }) {
+            shared.send(Event::GoTo(entry.track.id.clone()));
+        }
+    }
+
+    #[zbus(property(emits_changed_signal = "invalidates"))]
+    fn tracks(&self) -> Vec<ObjectPath<'static>> {
+        let shared = self.shared.lock().unwrap();
+        shared
+            .tracklist
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|entry| entry_path(entry, &shared.track_id_prefix))
+            .collect()
+    }
+
+    #[zbus(property)]
+    fn can_edit_tracks(&self) -> bool {
+        false
+    }
+
+    #[zbus(signal)]
+    async fn track_list_replaced(
+        emitter: &SignalEmitter<'_>,
+        tracks: Vec<ObjectPath<'_>>,
+        current_track: ObjectPath<'_>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn track_metadata_changed(
+        emitter: &SignalEmitter<'_>,
+        track_id: ObjectPath<'_>,
+        metadata: HashMap<String, OwnedValue>,
+    ) -> zbus::Result<()>;
+}
+
 pub struct MprisBackend {
     connection: Connection,
     shared: Arc<Mutex<Shared>>,
     last: Option<PlaybackState>,
+    tracklist_publication: TracklistPublication,
+}
+
+#[derive(Default)]
+struct TracklistPublication {
+    last: Option<Vec<TrackListEntry>>,
+    dirty: bool,
+}
+
+impl TracklistPublication {
+    fn publish(
+        &mut self,
+        tracks: Option<&[TrackListEntry]>,
+        notify: impl FnOnce(Option<&[TrackListEntry]>, bool) -> Result<()>,
+    ) -> Result<()> {
+        if !self.dirty && self.last.as_deref() == tracks {
+            return Ok(());
+        }
+        match notify(self.last.as_deref(), self.dirty) {
+            Ok(()) => {
+                self.last = tracks.map(<[TrackListEntry]>::to_vec);
+                self.dirty = false;
+                Ok(())
+            }
+            Err(error) => {
+                self.dirty = true;
+                Err(error)
+            }
+        }
+    }
 }
 
 impl MprisBackend {
@@ -383,6 +500,7 @@ impl MprisBackend {
             state: PlaybackState::default(),
             emit,
             track_id_prefix: config.track_id_prefix.trim_end_matches('/').to_string(),
+            tracklist: None,
         }));
 
         let root = RootInterface {
@@ -412,6 +530,18 @@ impl MprisBackend {
             .at(OBJECT_PATH, player)
             .map_err(|error| Error::Unavailable(format!("serving MediaPlayer2.Player: {error}")))?;
 
+        connection
+            .object_server()
+            .at(
+                OBJECT_PATH,
+                TrackListInterface {
+                    shared: shared.clone(),
+                },
+            )
+            .map_err(|error| {
+                Error::Unavailable(format!("serving MediaPlayer2.TrackList: {error}"))
+            })?;
+
         let name = format!("org.mpris.MediaPlayer2.{}", config.bus_name);
         connection
             .request_name(name.as_str())
@@ -421,6 +551,7 @@ impl MprisBackend {
             connection,
             shared,
             last: None,
+            tracklist_publication: TracklistPublication::default(),
         })
     }
 
@@ -448,9 +579,7 @@ impl Backend for MprisBackend {
         // client on the bus several times a second.
         let changed_track = previous
             .as_ref()
-            .map(|old| {
-                old.track != state.track || old.duration_secs() != state.duration_secs()
-            })
+            .map(|old| old.track != state.track || old.duration_secs() != state.duration_secs())
             .unwrap_or(true);
 
         let emit_property = |changed: bool, emit: &dyn Fn() -> zbus::Result<()>| {
@@ -534,7 +663,82 @@ impl Backend for MprisBackend {
         Ok(())
     }
 
+    fn set_tracklist(&mut self, tracks: Option<&[TrackListEntry]>) -> Result<()> {
+        let (prefix, current) = {
+            let mut shared = self.shared.lock().unwrap();
+            let prefix = shared.track_id_prefix.clone();
+            if let Some(tracks) = tracks {
+                let mut ids = std::collections::HashSet::new();
+                for entry in tracks {
+                    let path = entry_path(entry, &prefix);
+                    if entry.track.id.is_empty()
+                        || path.as_str() == NO_TRACK_PATH
+                        || !ids.insert(path.to_string())
+                    {
+                        return Err(Error::Publish(
+                            "track list IDs must be nonempty and unique after path sanitization"
+                                .into(),
+                        ));
+                    }
+                }
+            }
+            shared.tracklist = tracks.map(<[TrackListEntry]>::to_vec);
+            (prefix.clone(), track_object_path(&shared.state, &prefix))
+        };
+        self.tracklist_publication.publish(tracks, |old, dirty| {
+            let list = self
+                .connection
+                .object_server()
+                .interface::<_, TrackListInterface>(OBJECT_PATH)
+                .map_err(|e| Error::Publish(format!("track list interface missing: {e}")))?;
+            let emitter = list.signal_emitter();
+            let old_paths: Vec<_> = old
+                .unwrap_or_default()
+                .iter()
+                .map(|entry| entry_path(entry, &prefix))
+                .collect();
+            let paths: Vec<_> = tracks
+                .unwrap_or_default()
+                .iter()
+                .map(|entry| entry_path(entry, &prefix))
+                .collect();
+            if dirty || old_paths != paths || old.is_some() != tracks.is_some() {
+                futures_lite_block(list.get().tracks_invalidate(emitter))
+                    .map_err(|e| Error::Publish(e.to_string()))?;
+                futures_lite_block(TrackListInterface::track_list_replaced(
+                    emitter, paths, current,
+                ))
+                .map_err(|e| Error::Publish(e.to_string()))?;
+            } else if let (Some(old), Some(tracks)) = (old, tracks) {
+                for (before, after) in old.iter().zip(tracks) {
+                    if before != after {
+                        futures_lite_block(TrackListInterface::track_metadata_changed(
+                            emitter,
+                            entry_path(after, &prefix),
+                            metadata_map(&entry_state(after), &prefix),
+                        ))
+                        .map_err(|e| Error::Publish(e.to_string()))?;
+                    }
+                }
+            }
+            if dirty || old.is_some() != tracks.is_some() {
+                let root = self
+                    .connection
+                    .object_server()
+                    .interface::<_, RootInterface>(OBJECT_PATH)
+                    .map_err(|e| Error::Publish(format!("root interface missing: {e}")))?;
+                futures_lite_block(root.get().has_track_list_changed(root.signal_emitter()))
+                    .map_err(|e| Error::Publish(e.to_string()))?;
+            }
+            Ok(())
+        })
+    }
+
     fn stop(&mut self) {
+        let _ = self
+            .connection
+            .object_server()
+            .remove::<TrackListInterface, _>(OBJECT_PATH);
         let _ = self
             .connection
             .object_server()
@@ -551,4 +755,46 @@ impl Backend for MprisBackend {
 /// enough and avoids pulling in a full async runtime.
 fn futures_lite_block<T>(future: impl std::future::Future<Output = T>) -> T {
     zbus::block_on(future)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_tracklist_publication_is_retried_even_after_reverting() {
+        let mut publication = TracklistPublication::default();
+        let tracks = [TrackListEntry::default()];
+
+        let result = publication.publish(Some(&tracks), |old, dirty| {
+            assert!(old.is_none());
+            assert!(!dirty);
+            Err(Error::Publish("signal failed".into()))
+        });
+        assert!(result.is_err());
+
+        publication
+            .publish(Some(&tracks), |old, dirty| {
+                assert!(old.is_none());
+                assert!(dirty);
+                Ok(())
+            })
+            .unwrap();
+        publication
+            .publish(Some(&tracks), |_, _| {
+                panic!("unchanged list was republished")
+            })
+            .unwrap();
+
+        assert!(publication
+            .publish(None, |_, _| Err(Error::Publish("signal failed".into())))
+            .is_err());
+        publication
+            .publish(Some(&tracks), |old, dirty| {
+                assert_eq!(old, Some(tracks.as_slice()));
+                assert!(dirty);
+                Ok(())
+            })
+            .unwrap();
+    }
 }

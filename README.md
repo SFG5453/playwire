@@ -86,6 +86,33 @@ represent is silently ignored rather than an error.
 | Capability flags | ✓ | ✓ | ✓ |
 | Artwork | ✓ URL | ✓ URL | ✓ fetched |
 | Raise / Quit / OpenUri | ✓ | — | — |
+| Track list / GoTo | ✓ | — | — |
+
+## Track lists
+
+On Linux, publish an ordered list of nearby queue entries for MPRIS clients:
+
+```rust,no_run
+use playwire::{MediaControls, Track, TrackListEntry};
+use std::time::Duration;
+
+# fn publish(controls: &mut MediaControls) -> playwire::Result<()> {
+let queue = vec![TrackListEntry {
+    track: Track { id: "queue_entry_1".into(), title: "Alison".into(), ..Track::default() },
+    duration: Some(Duration::from_secs(231)),
+}];
+controls.set_tracklist(Some(&queue))?;
+# Ok(())
+# }
+```
+
+Use a stable, nonempty ID for each queue occurrence, even when the same song
+appears more than once. IDs must remain unique after characters outside ASCII
+letters and digits are replaced with underscores. Publish the current track with
+the same ID in `PlaybackState`. Handle `Event::GoTo(id)` to play a requested
+entry, then publish the resulting state. Republish the list when it changes;
+`Some(&[])` publishes an empty list and `None` disables it. MPRIS clients cannot
+edit the list. Windows and macOS ignore track lists.
 
 ## Position updates
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::config::PlayerConfig;
 use crate::error::Result;
-use crate::state::{Event, PlaybackState};
+use crate::state::{Event, PlaybackState, TrackListEntry};
 
 /// Called from whichever thread the OS delivers its controls on, so every
 /// backend needs its handler to be `Send + Sync`.
@@ -16,16 +16,19 @@ pub(crate) type Emitter = Arc<dyn Fn(Event) + Send + Sync + 'static>;
 
 pub(crate) trait Backend: Send {
     fn set_state(&mut self, state: &PlaybackState) -> Result<()>;
+    fn set_tracklist(&mut self, _tracks: Option<&[TrackListEntry]>) -> Result<()> {
+        Ok(())
+    }
     fn stop(&mut self);
 }
 
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(all(
     unix,
     not(any(target_os = "macos", target_os = "ios", target_os = "android"))
 ))]
 mod mpris;
-#[cfg(target_os = "macos")]
-mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 

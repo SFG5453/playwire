@@ -31,7 +31,10 @@ impl fmt::Display for Error {
             Self::Publish(detail) => write!(formatter, "failed to publish state: {detail}"),
             Self::Config(detail) => write!(formatter, "invalid configuration: {detail}"),
             Self::Unsupported => {
-                write!(formatter, "media controls are not supported on this platform")
+                write!(
+                    formatter,
+                    "media controls are not supported on this platform"
+                )
             }
         }
     }

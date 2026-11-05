@@ -58,6 +58,19 @@ impl Track {
     }
 }
 
+/// A track in the published queue, with its optional length.
+///
+/// Each entry must have a nonempty, unique [`Track::id`], including when the
+/// same media item occurs more than once. IDs must remain stable as the queue
+/// changes and must not collide after non-alphanumeric characters become `_`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TrackListEntry {
+    /// Metadata and stable queue-entry identifier.
+    pub track: Track,
+    /// Length, if known.
+    pub duration: Option<Duration>,
+}
+
 /// Repeat mode, in the vocabulary every backend agrees on.
 ///
 /// Maps to MPRIS `LoopStatus` (`None`/`Track`/`Playlist`), SMTC
@@ -159,7 +172,9 @@ impl PlaybackState {
     }
 
     pub(crate) fn duration_secs(&self) -> f64 {
-        self.duration.map(|value| value.as_secs_f64()).unwrap_or(0.0)
+        self.duration
+            .map(|value| value.as_secs_f64())
+            .unwrap_or(0.0)
     }
 
     /// Clamped to the track length: a stale position left over from the previous
@@ -236,6 +251,8 @@ pub enum Event {
     SetShuffle(bool),
     /// Requested repeat mode.
     SetRepeat(Repeat),
+    /// Play the queue entry with this track ID. MPRIS only.
+    GoTo(String),
     /// A URI the player was asked to open. MPRIS only.
     OpenUri(String),
     /// Bring the player's window to the front. MPRIS only.
